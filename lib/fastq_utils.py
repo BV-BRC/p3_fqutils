@@ -292,17 +292,19 @@ def run_alignment(genome_list, read_list, parameters, output_dir, job_data):
 
                 # minimap2 can't write the unmapped reads like bowtie2 and hisat2
                 if not (read2 or hisat2_used): # minimap2
-                    with unmapped_fq_gz_path.open('w') as un_fq_gz_hdl:
-                        subprocess.run(
-                            [
-                                "samtools", "fastq",
-                                "--threads", str(view_threads),
-                                "-n", "-f", "4",
-                                bam_file_all
-                            ],
-                            check=True,
-                            stdout=un_fq_gz_hdl,
-                        )
+                    unmapped_fq = str(unmapped_fq_gz_path)[:-3]
+                    samtools_cmd = [
+                        "samtools", "fastq",
+                        "--threads", str(view_threads),
+                        "-n", "-f", "4",
+                        bam_file_all
+                    ]
+                    print(f"extract unmapped reads to {unmapped_fq} with samtools")
+                    print(" ".join(samtools_cmd))
+                    with open(unmapped_fq, 'w') as unmapped_fq_hdl:
+                        subprocess.run(samtools_cmd, check=True, stdout=unmapped_fq_hdl)
+                    unmapped_fq_hdl.close()
+                    subprocess.run(["gzip", unmapped_fq])
 
                 with open(bam_file_aligned, "w") as outstream:
                     subprocess.run(
@@ -353,7 +355,9 @@ def run_alignment(genome_list, read_list, parameters, output_dir, job_data):
                     print("Redirecting bedtools stderr to a log.", file=sys.stderr)
                     print(bam_file_sort_name, file=fd)
                     fd.flush()
+                    print("run: "+" ".join(bam2fq_cmd))
                     subprocess.run(bam2fq_cmd, check=True, stderr=fd)
+                print("run: "+" ".join(bam2fqgz_cmd))
                 subprocess.run(bam2fqgz_cmd, check=True)
                 samtools_index_threads = parameters.get("samtools_index", {}).get(
                     "-p", "1"
