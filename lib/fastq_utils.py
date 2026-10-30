@@ -14,6 +14,7 @@ import urllib.request as request
 from contextlib import closing
 from multiprocessing import Process
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 import requests
 # import pycurl
 from fqutil_api import authenticateByEnv, getHostManifest
@@ -461,7 +462,6 @@ def run_host_removal(read_list, output_dir, job_data, tool_params):
     https://github.com/bede/hostile
     """
     output_dir = Path(output_dir)
-    print(f"{output_dir=}", file=sys.stderr)
 
     # Set the cache dir for the index files
     # See https://github.com/bede/hostile/issues/32
@@ -471,23 +471,12 @@ def run_host_removal(read_list, output_dir, job_data, tool_params):
     # os.environ["HOSTILE_CACHE_DIR"] = str(cache_dir)
     # print(f"{os.environ['HOSTILE_CACHE_DIR']=}", file=sys.stderr)
 
-    print(read_list)
-    print(job_data)
-    print(tool_params)
-
     entry = read_list[0]
     src_dir = Path(entry["read1"]).parent
-    print(src_dir)
 
-    # species_common_name = job_data.get("species_common_name")
-    # print(species_common_name)
+    species_common_name = job_data.get("species_common_name")
 
-    # aligner = job_data.get("aligner")
-
-    species_common_name = str("Cow")
-    # print(species_common_name)
-
-    aligner = str("minimap2")
+    aligner = job_data.get("aligner")
 
     try:
         run_hostile(
@@ -496,28 +485,12 @@ def run_host_removal(read_list, output_dir, job_data, tool_params):
             aligner=aligner,
             out_dir=str(output_dir),
         )
-        # with log_path.open('w') as log_hdl:
-        #     subprocess.run(cmd, check=True, stdout=log_hdl)
 
-        return {"status": "success"}
+        return {"status": "successful host removal"}
 
     except Exception as e:
         print(f"Host removal failed for {species_common_name}: {e}", file=sys.stderr)
         return {"status": "failed", "error": str(e)}
-
-        
-    # log_path = output_dir / "hostile_report.txt"
-    # print(f"{log_path=}", file=sys.stderr)
-
-    # base_cmd = ["hostile", "clean", "--force",
-    #        "--out-dir", str(output_dir), "--fastq1"]
-
-    # for r in read_list:
-    #     print(f"{r=}", file=sys.stderr)
-    #     if "read2" in r:
-    #         cmd = base_cmd + [r["read1"], "--fastq2", r["read2"]]
-    #     else:
-    #         cmd = base_cmd + [r["read1"],]
 
 
 def get_genome(parameters, host_manifest={}):
@@ -707,6 +680,49 @@ def moveRead(filepath):
     else:
         return filepath
 
+def _compress_one(fastq: Path, level: int, threads: int, remove_original: bool) -> str:
+    gz_path = fastq.with_name(fastq.name + ".gz")
+    tmp_path = gz_path.with_name(gz_path.name + ".tmp")
+
+    if shutil.which("pigz"):
+        with open(tmp_path, "wb") as f_out:
+            subprocess.run(
+                ["pigz", "-c", f"-{level}", "-p", str(threads), str(fastq)],
+                stdout=f_out,
+                check=True,
+            )
+    else:
+        with open(fastq, "rb") as f_in, gzip.open(tmp_path, "wb", compresslevel=level) as f_out:
+            shutil.copyfileobj(f_in, f_out, length=16 * 1024 * 1024)
+
+    tmp_path.rename(gz_path)
+    if remove_original:
+        fastq.unlink()
+    return f"Compressed {fastq.name} -> {gz_path.name}"
+
+
+def gzip_fastq_files(output_dir, remove_original: bool = True, level: int = 6, threads: int = None) -> None:
+    """Compress every uncompressed .fastq/.fq file in output_dir to .gz."""
+    out_dir = Path(output_dir)
+    threads = threads or os.cpu_count() or 1
+
+    fastqs = [
+        f for f in sorted(out_dir.glob("*"))
+        if f.is_file() and f.suffix in (".fastq", ".fq")
+    ]
+    if not fastqs:
+        return
+
+    if shutil.which("pigz"):
+        # pigz already uses multiple cores per file, so do files one at a time
+        for fastq in fastqs:
+            print(_compress_one(fastq, level, threads, remove_original))
+    else:
+        # zlib releases the GIL, so threads compress files in parallel
+        with ThreadPoolExecutor(max_workers=min(threads, len(fastqs))) as pool:
+            for msg in pool.map(lambda f: _compress_one(f, level, 1, remove_original), fastqs):
+                print(msg)
+
 def run_fq_util(job_data, output_dir, tool_params={}):
     # arguments:
     # list of genomes [{"genome":somefile,"annotation":somefile}]
@@ -724,14 +740,19 @@ def run_fq_util(job_data, output_dir, tool_params={}):
         if step == "TRIM":
             trimmed_reads = run_trim(read_list, output_dir, job_data, tool_params)
             read_list = trimmed_reads
+            gzip_fastq_files(output_dir)
         elif step == "PAIRED_FILTER":
             read_list = paired_filter(read_list, tool_params, output_dir, job_data)
+            gzip_fastq_files(output_dir)
         elif step == "FASTQC":
             run_fastqc(read_list, output_dir, job_data, tool_params)
+            gzip_fastq_files(output_dir)
         elif step == "ALIGN":
             run_alignment(genome_list, read_list, tool_params, output_dir, job_data)
+            gzip_fastq_files(output_dir)
         elif step == "SCRUB_HUMAN":
             run_host_removal(read_list, output_dir, job_data, tool_params)
+            gzip_fastq_files(output_dir)
         else:
             print("Skipping step. Not found: {}".format(step), file=sys.stderr)
     if len(recipe) == 1 and recipe[0].upper() == "PAIRED_FILTER":

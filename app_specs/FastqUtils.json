@@ -126,6 +126,66 @@
         "required": 1,
         "default": [],
         "type": "list"
-    }
+    },
+    {
+          "id": "species_common_name",
+          "label": "Species Common Name",
+          "required": 0,
+          "type": "enum",
+          "default": null,
+          "desc": "Species common name for desired host species",
+          "enum": [
+            "Mouse",
+            "Rat",
+            "Pig",
+            "Cow",
+            "Chicken",
+            "Dog",
+            "Cat",
+            "Zebrafish",
+            "Fruit fly",
+            "C. elegans",
+            "Rhesus macaque",
+            "Crab-eating macaque",
+            "Olive baboon",
+            "Vervet",
+            "Marmoset",
+            "Chimpanzee",
+            "Bonobo",
+            "Western lowland gorilla",
+            "Sumatran orangutan",
+            "Bornean orangutan",
+            "Sheep",
+            "Goat",
+            "Horse",
+            "Water buffalo",
+            "Turkey",
+            "Duck",
+            "Rabbit",
+            "Little brown bat",
+            "Big brown bat",
+            "Egyptian fruit bat",
+            "Black flying fox",
+            "Common vampire bat",
+            "Pale spear-nosed bat",
+            "Pallas's mastiff bat",
+            "Greater horseshoe bat",
+            "Natal long-fingered bat",
+            "Red fox",
+            "Human"
+          ]
+        },
+        {
+          "id": "aligner",
+          "label": "Aligner",
+          "required": 0,
+          "type": "enum",
+          "default": null,
+          "desc": "Desired aligner to use with Hostile (bowtie2 for short reads, minimap2 for long reads)",
+          "enum": [
+            "bowtie2",
+            "minimap2"
+          ]
+        }
   ]
 }
