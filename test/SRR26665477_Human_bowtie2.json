@@ -1,0 +1,14 @@
+{
+  "recipe": [
+    "Scrub_Human"
+  ],
+  "aligner": "bowtie2",
+  "species_common_name": "Human",
+  "output_path": "/jsheriff@bvbrc/Jamal_Dev/Dev_Tests/FastqUtils_Hostile_DevTest_30Oct2026",
+  "output_file": "SRR26665477_Human_bowtie2",
+  "srr_libs": [
+    {
+      "srr_accession": "SRR26665477"
+    }
+  ]
+}

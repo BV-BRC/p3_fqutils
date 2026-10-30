@@ -1,0 +1,14 @@
+{
+  "recipe": [
+    "Scrub_Human"
+  ],
+  "aligner": "minimap2",
+  "species_common_name": "Red fox",
+  "output_path": "/jsheriff@bvbrc/Jamal_Dev/Dev_Tests/FastqUtils_Hostile_DevTest_30Oct2026",
+  "output_file": "SRR29088067_RedFox_minimap2",
+  "srr_libs": [
+    {
+      "srr_accession": "SRR29088067"
+    }
+  ]
+}
