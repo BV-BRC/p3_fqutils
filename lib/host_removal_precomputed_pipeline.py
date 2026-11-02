@@ -26,11 +26,16 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-BOWTIE2_DB = Path("/home/ac.jsheriff/dev_container/projects/host_removal/reference_indices/bowtie2")
-MINIMAP2_DB = Path("/home/ac.jsheriff/dev_container/projects/host_removal/reference_indices/minimap2")
-os.environ["HOSTILE_CACHE_DIR"] = "/home/ac.jsheriff/dev_container/projects/host_removal/reference_indices/hostile_cache"
+# Base folder for all reference data; override with HOST_REMOVAL_REF_DIR
+REF_DIR = Path(os.environ.get("HOST_REMOVAL_REF_DIR", 
+"/vol/bvbrc/production/application-backend/fastqutils/reference_indices"))
 
-HOST_GCF_DICT = Path("/home/ac.jsheriff/dev_container/modules/p3_fqutils/lib/reference_index_dict_31Aug2026.csv")
+BOWTIE2_DB = Path(os.environ.get("HOST_REMOVAL_BOWTIE2_DB", REF_DIR / "bowtie2"))
+MINIMAP2_DB = Path(os.environ.get("HOST_REMOVAL_MINIMAP2_DB", REF_DIR / "minimap2"))
+HOST_GCF_DICT = Path(os.environ.get("HOST_REMOVAL_GCF_DICT",REF_DIR / "reference_index_dict_31Aug2026.csv"))
+
+# Keep an existing HOSTILE_CACHE_DIR if one is set; otherwise use the default
+os.environ.setdefault("HOSTILE_CACHE_DIR", str(REF_DIR / "hostile_cache"))
 
 BOWTIE2_THREADS = 2
 

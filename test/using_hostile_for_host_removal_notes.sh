@@ -40,7 +40,14 @@ For test - create synthetic FASTQ to test on alpha - look at IDs after filtering
 
 js_run_dev_tests \
       -s p3_fqutils \
-      -t /home/ac.jsheriff/dev_container/modules/p3_fqutils/test/hostile_tests \
+      -t /home/ac.jsheriff/dev_container/dev_tests/hostile_tests \
       -r /home/ac.jsheriff/dev_container/modules \
       -o /jsheriff@bvbrc/Jamal_Dev/Dev_Tests/FastqUtils_Hostile_DevTest_30Oct2026 \
       -d /home/ac.jsheriff/dev_container/dev_tests/FastqUtils_Hostile_DevTest_30Oct2026
+
+
+git PAT 
+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
+
+
+/vol/bvbrc/production/application-backend/fastqutils

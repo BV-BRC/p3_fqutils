@@ -750,7 +750,7 @@ def run_fq_util(job_data, output_dir, tool_params={}):
         elif step == "ALIGN":
             run_alignment(genome_list, read_list, tool_params, output_dir, job_data)
             gzip_fastq_files(output_dir)
-        elif step == "SCRUB_HUMAN":
+        elif step == "HOST_REMOVAL":
             run_host_removal(read_list, output_dir, job_data, tool_params)
             gzip_fastq_files(output_dir)
         else:
