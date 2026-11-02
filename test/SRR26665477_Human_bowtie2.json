@@ -1,6 +1,6 @@
 {
   "recipe": [
-    "Scrub_Human"
+    "Host_Removal"
   ],
   "aligner": "bowtie2",
   "species_common_name": "Human",
