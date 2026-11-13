@@ -1,0 +1,14 @@
+{
+  "recipe": [
+    "Host_Removal"
+  ],
+  "aligner": "bowtie2",
+  "species_common_name": "Natal long-fingered bat",
+  "output_path": "/jsheriff@bvbrc/Jamal_Dev/Dev_Tests/FastqUtils_Hostile_DevTest_30Oct2026",
+  "output_file": "SRR25316730_NatalLongFingeredBat_bowtie2",
+  "srr_libs": [
+    {
+      "srr_accession": "SRR25316730"
+    }
+  ]
+}
