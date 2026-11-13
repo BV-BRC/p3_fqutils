@@ -32,7 +32,7 @@ REF_DIR = Path(os.environ.get("HOST_REMOVAL_REF_DIR",
 
 BOWTIE2_DB = Path(os.environ.get("HOST_REMOVAL_BOWTIE2_DB", REF_DIR / "bowtie2"))
 MINIMAP2_DB = Path(os.environ.get("HOST_REMOVAL_MINIMAP2_DB", REF_DIR / "minimap2"))
-HOST_GCF_DICT = Path(os.environ.get("HOST_REMOVAL_GCF_DICT",REF_DIR / "reference_index_dict_31Aug2026.csv"))
+HOST_GCF_DICT = Path(os.environ.get("HOST_REMOVAL_GCF_DICT",REF_DIR / "reference_index_dict.csv"))
 
 # Keep an existing HOSTILE_CACHE_DIR if one is set; otherwise use the default
 os.environ.setdefault("HOSTILE_CACHE_DIR", str(REF_DIR / "hostile_cache"))
