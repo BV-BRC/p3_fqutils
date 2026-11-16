@@ -16,7 +16,7 @@ from multiprocessing import Process
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import requests
-# import pycurl
+import pycurl
 from fqutil_api import authenticateByEnv, getHostManifest
 
 import sys
@@ -25,7 +25,9 @@ from host_removal_precomputed_pipeline import run_hostile
 
 # Default bowtie2 threads.
 BT2_THREADS = 2
-SAM_THREADS = 1
+SAM_THREADS = 2
+MM2_THREADS = 3
+HISAT2_THREADS = 3
 
 # hisat2 has problems with spaces in filenames
 # prevent spaces in filenames. if one exists link the file to a no-space version.
@@ -194,7 +196,7 @@ def run_alignment(genome_list, read_list, parameters, output_dir, job_data):
     mm2_params = parameters.get("minimap2", {})
     # thread count (tool default is 3)
     if "-t" in mm2_params:
-        mm2_cmd += ["-t", str(mm2_params["-t"])]
+        mm2_cmd += ["-t", str(mm2_params["-t"] or MM2_THREADS)]
 
     for genome in genome_list:
         genome_link = genome["genome_link"]
@@ -222,11 +224,11 @@ def run_alignment(genome_list, read_list, parameters, output_dir, job_data):
             hisat2_params = parameters.get("hisat2", {})
             # thread count
             if "-p" in hisat2_params:
-                cmd += ["-p", str(hisat2_params["-p"])]
+                cmd += ["-p", str(hisat2_params["-p"] or HISAT2_THREADS)]
             hisat2_used = True
         else:
             subprocess.run(["bowtie2-build", genome_link, genome_link], check=True)
-            bt2_threads = parameters.get("bowtie2", {}).get("-p", BT2_THREADS)
+            bt2_threads = parameters.get("bowtie2", {}).get("-p") or BT2_THREADS
             cmd = ["bowtie2", "-p", str(bt2_threads), "-x", genome_link]
 
         print(f"{cmd=}")
@@ -282,7 +284,7 @@ def run_alignment(genome_list, read_list, parameters, output_dir, job_data):
                 )
             else:
                 subprocess.run(cur_cmd, check=True)  # call mapping tool
-                view_threads = parameters.get("samtools_view", {}).get("-p", SAM_THREADS)
+                view_threads = parameters.get("samtools_view", {}).get("-p") or SAM_THREADS
                 with open(bam_file_all, "w") as outstream:
                     samtools_view = subprocess.Popen(
                         ["samtools", "view", "-@", str(view_threads), "-Su", str(sam_path)],
@@ -538,7 +540,27 @@ def get_genome(parameters, host_manifest={}):
                 except Exception as e:
                     print(f"An error occurred during pycurl download: {e}", file=sys.stderr)
                     sys.exit(1)
-            else:
+            # The below code is appended for use of curl instead of pycurl
+            # if index_url.startswith("ftp://"):
+            #     print(f"Downloading via curl (FTPS): {index_url}")
+            #     try:
+            #         subprocess.run(
+            #             [
+            #                 "curl", "--fail", "--silent", "--show-error",
+            #                 "--ssl-reqd",            # explicit FTPS, like USESSL_ALL
+            #                 "--ftp-pasv",            # passive mode, for firewalls
+            #                 "--connect-timeout", "30",
+            #                 "--retry", "3",
+            #                 "-o", index_file,
+            #                 index_url,
+            #             ],
+            #             check=True,
+            #         )
+            #         print("Download successful with curl.")
+            #     except subprocess.CalledProcessError as e:
+            #         print(f"Error downloading {index_url} via curl: {e}", file=sys.stderr)
+            #         sys.exit(1)
+            # else:
                 # Handle HTTP/HTTPS as before
                 with closing(request.urlopen(index_url)) as r:
                     with open(index_file, "wb") as f:
@@ -740,19 +762,14 @@ def run_fq_util(job_data, output_dir, tool_params={}):
         if step == "TRIM":
             trimmed_reads = run_trim(read_list, output_dir, job_data, tool_params)
             read_list = trimmed_reads
-            gzip_fastq_files(output_dir)
         elif step == "PAIRED_FILTER":
             read_list = paired_filter(read_list, tool_params, output_dir, job_data)
-            gzip_fastq_files(output_dir)
         elif step == "FASTQC":
             run_fastqc(read_list, output_dir, job_data, tool_params)
-            gzip_fastq_files(output_dir)
         elif step == "ALIGN":
             run_alignment(genome_list, read_list, tool_params, output_dir, job_data)
-            gzip_fastq_files(output_dir)
         elif step == "HOST_REMOVAL":
             run_host_removal(read_list, output_dir, job_data, tool_params)
-            gzip_fastq_files(output_dir)
         else:
             print("Skipping step. Not found: {}".format(step), file=sys.stderr)
     if len(recipe) == 1 and recipe[0].upper() == "PAIRED_FILTER":
@@ -766,3 +783,4 @@ def run_fq_util(job_data, output_dir, tool_params={}):
                 p2.start()
                 p1.join()
                 p2.join()
+    gzip_fastq_files(output_dir)
