@@ -16,7 +16,12 @@ from multiprocessing import Process
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import requests
+
+#Comment out sys.append for prod
+# sys.path.append("/home/ac.jsheriff/pylibs")
+
 import pycurl
+
 from fqutil_api import authenticateByEnv, getHostManifest
 
 import sys
@@ -24,10 +29,10 @@ sys.path.append("/home/ac.jsheriff/dev_container/modules/p3_fqutils/lib")
 from host_removal_precomputed_pipeline import run_hostile
 
 # Default bowtie2 threads.
-BT2_THREADS = 2
-SAM_THREADS = 2
-MM2_THREADS = 3
-HISAT2_THREADS = 3
+BT2_THREADS = 8
+SAM_THREADS = 8
+MM2_THREADS = 8
+HISAT2_THREADS = 8
 
 # hisat2 has problems with spaces in filenames
 # prevent spaces in filenames. if one exists link the file to a no-space version.
@@ -506,15 +511,19 @@ def get_genome(parameters, host_manifest={}):
             index_file = os.path.join(
                 parameters["output_path"], parameters["gid"] + ".ht2.tar"
             )
-            # If index_url starts with ftp://, change to sftp://
-            #if index_url.startswith("ftp://"):
+
+            # Command: If index_url starts with ftp://, change to sftp:// -- keep out
+            # if index_url.startswith("ftp://"):
             #    index_url = "ftps://" + index_url[6:]
             #    print("Changed index_url to FTPS:", index_url)
-            # If index_url contains patricbrc, replace with bv-brc
+
+            # Command: If index_url contains patricbrc, replace with bv-brc
             if "patricbrc.org" in index_url:
                 index_url = index_url.replace("patricbrc.org", "bv-brc.org")
                 print("Changed index_url to bv-brc:", index_url)
             print(index_url)
+
+            # Original script calling pycurl
             if index_url.startswith("ftp://"):
                 try:
                     print(f"Attempting to download via pycurl: {index_url}")
@@ -540,6 +549,7 @@ def get_genome(parameters, host_manifest={}):
                 except Exception as e:
                     print(f"An error occurred during pycurl download: {e}", file=sys.stderr)
                     sys.exit(1)
+
             # The below code is appended for use of curl instead of pycurl
             # if index_url.startswith("ftp://"):
             #     print(f"Downloading via curl (FTPS): {index_url}")
@@ -560,8 +570,9 @@ def get_genome(parameters, host_manifest={}):
             #     except subprocess.CalledProcessError as e:
             #         print(f"Error downloading {index_url} via curl: {e}", file=sys.stderr)
             #         sys.exit(1)
-            # else:
+
                 # Handle HTTP/HTTPS as before
+            else:
                 with closing(request.urlopen(index_url)) as r:
                     with open(index_file, "wb") as f:
                         shutil.copyfileobj(r, f)
