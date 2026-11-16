@@ -37,7 +37,7 @@ HOST_GCF_DICT = Path(os.environ.get("HOST_REMOVAL_GCF_DICT",REF_DIR / "reference
 # Keep an existing HOSTILE_CACHE_DIR if one is set; otherwise use the default
 os.environ.setdefault("HOSTILE_CACHE_DIR", str(REF_DIR / "hostile_cache"))
 
-BOWTIE2_THREADS = 2
+BOWTIE2_THREADS = 8
 
 # Hostile's built-in standard indexes (keys are lower-case common names).
 # Hostile downloads and caches these itself, for both Bowtie2 and Minimap2,
