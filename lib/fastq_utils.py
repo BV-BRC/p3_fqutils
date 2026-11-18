@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 
 #Comment out sys.append for prod
-sys.path.append("/home/ac.jsheriff/pylibs")
+# sys.path.append("/home/ac.jsheriff/pylibs")
 
 import pycurl
 
