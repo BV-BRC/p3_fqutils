@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 
 #Comment out sys.append for prod
-# sys.path.append("/home/ac.jsheriff/pylibs")
+sys.path.append("/home/ac.jsheriff/pylibs")
 
 import pycurl
 
@@ -469,20 +469,9 @@ def run_host_removal(read_list, output_dir, job_data, tool_params):
     https://github.com/bede/hostile
     """
     output_dir = Path(output_dir)
-
-    # Set the cache dir for the index files
-    # See https://github.com/bede/hostile/issues/32
-
-    # cache_dir = output_dir / "hostile"
-    # cache_dir.mkdir(exist_ok=True, parents=True)
-    # os.environ["HOSTILE_CACHE_DIR"] = str(cache_dir)
-    # print(f"{os.environ['HOSTILE_CACHE_DIR']=}", file=sys.stderr)
-
     entry = read_list[0]
     src_dir = Path(entry["read1"]).parent
-
     species_common_name = job_data.get("species_common_name")
-
     aligner = job_data.get("aligner")
 
     try:
