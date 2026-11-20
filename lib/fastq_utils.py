@@ -19,13 +19,11 @@ import requests
 
 #Comment out sys.append for prod
 # sys.path.append("/home/ac.jsheriff/pylibs")
-
 import pycurl
 
 from fqutil_api import authenticateByEnv, getHostManifest
 
-import sys
-sys.path.append("/home/ac.jsheriff/dev_container/modules/p3_fqutils/lib")
+# sys.path.insert(0, "/home/ac.jsheriff/dev_container/modules/p3_fqutils/lib") - comment out for prod
 from host_removal_precomputed_pipeline import run_hostile
 
 # Default bowtie2 threads.
@@ -474,6 +472,12 @@ def run_host_removal(read_list, output_dir, job_data, tool_params):
     species_common_name = job_data.get("species_common_name")
     aligner = job_data.get("aligner")
 
+    if species_common_name is None:
+        species_common_name = "Human"
+    
+    if aligner is None:
+        aligner = "bowtie2"
+
     try:
         run_hostile(
             src_dir=str(src_dir),
@@ -768,7 +772,7 @@ def run_fq_util(job_data, output_dir, tool_params={}):
             run_fastqc(read_list, output_dir, job_data, tool_params)
         elif step == "ALIGN":
             run_alignment(genome_list, read_list, tool_params, output_dir, job_data)
-        elif step == "HOST_REMOVAL":
+        elif step == "HOST_REMOVAL" or "SCRUB_HUMAN":
             run_host_removal(read_list, output_dir, job_data, tool_params)
         else:
             print("Skipping step. Not found: {}".format(step), file=sys.stderr)
