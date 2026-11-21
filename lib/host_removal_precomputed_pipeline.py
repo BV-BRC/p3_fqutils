@@ -50,7 +50,7 @@ BOWTIE2_THREADS = 8
 # so they bypass the GCF lookup and the local index database.
 STANDARD_INDICES = {
     "human": "human-t2t-hla",
-    "human - default": "human-t2t-hla"
+    "human - hostile standard": "human-t2t-hla"
     }
 
 # Two-pass hosts (keys are lower-case common names): [Hostile standard index, GCF accession].
