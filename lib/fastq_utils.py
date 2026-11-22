@@ -18,12 +18,14 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 
 #Comment out sys.append for prod
-# sys.path.append("/home/ac.jsheriff/pylibs")
+sys.path.append("/home/ac.jsheriff/pylibs")
 import pycurl
 
 from fqutil_api import authenticateByEnv, getHostManifest
 
-# sys.path.insert(0, "/home/ac.jsheriff/dev_container/modules/p3_fqutils/lib") - comment out for prod
+# comment out below for prod
+sys.path.insert(0, "/home/ac.jsheriff/dev_container/modules/p3_fqutils/lib")
+
 from host_removal_precomputed_pipeline import run_hostile
 
 # Default bowtie2 threads.
