@@ -14,7 +14,8 @@ Required arguments:
 
 This script will:
   1) search GCF accessions in a pre-computed index database, based on the aligner selection
-     (human uses Hostile's built-in index, which Hostile downloads and caches itself)
+     (human uses Hostile's built-in index, which Hostile downloads and caches itself;
+     "Human - Complete" runs Hostile's human index first, then GRCh38 on the cleaned reads)
   2) remotely download reference genome and construct a custom index (if needed)
   3) filter host reads from input fastq files and output filtered fastq file(s)
 """
@@ -26,6 +27,7 @@ import sys
 import zipfile
 import csv
 import os
+import shutil
 import threading
 from contextlib import contextmanager
 from pathlib import Path
@@ -46,9 +48,17 @@ BOWTIE2_THREADS = 8
 # Hostile's built-in standard indexes (keys are lower-case common names).
 # Hostile downloads and caches these itself, for both Bowtie2 and Minimap2,
 # so they bypass the GCF lookup and the local index database.
-STANDARD_INDEXES = {
-    "human": "human-t2t-hla"
+STANDARD_INDICES = {
+    "human": "human-t2t-hla",
+    "human - hostile standard": "human-t2t-hla"
     }
+
+# Two-pass hosts (keys are lower-case common names): [Hostile standard index, GCF accession].
+# Reads are first cleaned against the standard index, then the cleaned reads are
+# cleaned again against the precomputed index for the GCF accession (GRCh38 here).
+COMPLETE_INDICES = {
+    "human - complete": ["human-t2t-hla", "GCF_000001405.40"]
+}
 
 # Optional suffixes added by fastq_utils' trimming step / Trim Galore
 _TRIM_SUFFIX = r"(?:_ptrim|_strim|_val_[12]|_trimmed)?"
@@ -151,23 +161,44 @@ def find_fastq_files(src_dir: Path):
 
 def find_precomputed_index(db_dir: Path, species_common_name: str, suffix: str = ""):
     """
-    Returns the index to pass to `hostile clean --index`:
-      - a Hostile standard index name for built-in hosts (e.g. human), or
-      - the index prefix path (dir/dir_name + optional suffix) of the subdirectory
-        under db_dir matching the species' GCF accession, or
-      - None if no index is found.
+    Returns the list of indexes to pass to `hostile clean --index`, in the order
+    they should be run, or None if no index is found:
+      - [standard index name]            for built-in Hostile hosts (e.g. Human)
+      - [standard name, precomputed path] for two-pass hosts (e.g. Human - Complete:
+                                          Hostile's human index, then GRCh38)
+      - [precomputed path]               for all other hosts: the index prefix
+                                          (dir/dir_name + optional suffix) of the
+                                          subdirectory of db_dir matching the GCF accession
     """
+    key = species_common_name.strip().lower()
+    # print("Current key is:", key)
+
+    # Two-pass hosts: Hostile's standard index first, then the precomputed GCF index
+    if key in COMPLETE_INDICES:
+        standard_name, gcf_accession = COMPLETE_INDICES[key]
+        print(f"'{species_common_name}' selected for host removal. This pipeline will filter using "
+              f"Hostile's '{standard_name}' index first, followed by '{gcf_accession}'.")
+        precomputed = find_index_dir(db_dir, gcf_accession, suffix)
+        if precomputed is None:
+            return None
+        return [standard_name, precomputed]
 
     # Built-in Hostile indexes (e.g. human) skip the GCF lookup entirely
-    key = species_common_name.strip().lower()
-
-    if key in STANDARD_INDEXES:
-        index_name = STANDARD_INDEXES[key]
+    if key in STANDARD_INDICES:
+        index_name = STANDARD_INDICES[key]
         print(f"'{species_common_name}' uses Hostile's built-in index '{index_name}'. Using this index to filter host sequences...")
-        return index_name
-    else:
-        print(f"'{species_common_name}' is not a Hostile built-in index...")
+        return [index_name]
 
+    print(f"'{species_common_name}' is not a Hostile built-in index...")
+    gcf_accession = lookup_gcf_accession(species_common_name)
+    if gcf_accession is None:
+        return None
+    precomputed = find_index_dir(db_dir, gcf_accession, suffix)
+    return [precomputed] if precomputed is not None else None
+
+
+def lookup_gcf_accession(species_common_name: str):
+    """Returns the species' GCF accession from HOST_GCF_DICT, or None."""
     host_gcf_dict = {}
 
     with open(HOST_GCF_DICT, mode='r', encoding='utf-8') as file:
@@ -188,26 +219,81 @@ def find_precomputed_index(db_dir: Path, species_common_name: str, suffix: str =
 
     if gcf_accession is None:
         print(f"'{species_common_name}' not found in reference species list.")
-        return None
+    return gcf_accession
 
+
+def find_index_dir(db_dir: Path, gcf_accession: str, suffix: str = ""):
+    """
+    Returns the index prefix path (dir/dir_name + optional suffix) of the
+    subdirectory under db_dir whose name starts with gcf_accession, or None.
+    """
     for match in sorted(db_dir.glob(f"{gcf_accession}*")):
         if match.is_dir():
             return match / f"{match.name}{suffix}"
+    print(f"No index directory for '{gcf_accession}' found in {db_dir}.")
     return None
 
 
-def rename_hostile_outputs(out_dir: Path, input_reads: list, new_names: list) -> None:
-    """Rename Hostile's <input_stem>.clean*.fastq.gz outputs to the given names."""
-    for src, new_name in zip(input_reads, new_names):
+def find_hostile_outputs(out_dir: Path, input_reads: list) -> list:
+    """Return Hostile's <input_stem>.clean*.fastq.gz output for each input read file."""
+    outputs = []
+    for src in input_reads:
         stem = FASTQ_PATTERN.sub("", src.name)
         matches = sorted(out_dir.glob(f"{stem}.clean*.fastq.gz"))
         if len(matches) != 1:
             raise FileNotFoundError(
                 f"Expected one Hostile output for {src.name} in {out_dir}, found {len(matches)}"
             )
+        outputs.append(matches[0])
+    return outputs
+
+
+def hostile_clean(aligner: str, index, input_reads: list, out_dir: Path) -> list:
+    """
+    Runs one `hostile clean` pass against a single index and returns the cleaned
+    read files (same order as input_reads: [fwd, rvs] for paired, [reads] otherwise).
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cmd = ["hostile", "clean", "--force", "--fastq1", str(input_reads[0])]
+    if len(input_reads) == 2:
+        cmd += ["--fastq2", str(input_reads[1])]
+    # --aligner is always given: for bowtie2 it is required for unpaired short
+    # reads, otherwise Hostile treats a single input file as long reads (Minimap2)
+    cmd += [
+        "--aligner", aligner,
+        "--index", str(index),
+        "--out-dir", str(out_dir),
+    ]
+    run(cmd)
+    return find_hostile_outputs(out_dir, input_reads)
+
+
+def run_hostile_passes(aligner: str, indexes: list, input_reads: list,
+                       out_dir: Path, final_names: list) -> None:
+    """
+    Cleans input_reads against each index in turn, feeding each pass's cleaned
+    reads into the next, and saves the last pass's output in out_dir as final_names.
+    A single index runs straight into out_dir. With several indexes, each pass
+    writes to its own temporary subfolder, removed once the final files are saved.
+    """
+    current = list(input_reads)
+    pass_dirs = []
+    for i, index in enumerate(indexes, start=1):
+        if len(indexes) == 1:
+            pass_dir = out_dir
+        else:
+            pass_dir = out_dir / f"hostile_pass{i}"
+            pass_dirs.append(pass_dir)
+            print(f"Host removal pass {i} of {len(indexes)}: index {index}")
+        current = hostile_clean(aligner, index, current, pass_dir)
+
+    for src, new_name in zip(current, final_names):
         target = out_dir / new_name
-        matches[0].rename(target)
-        print(f"Renamed {matches[0].name} -> {target.name}")
+        src.rename(target)
+        print(f"Renamed {src.name} -> {target.name}")
+
+    for pass_dir in pass_dirs:
+        shutil.rmtree(pass_dir, ignore_errors=True)
 
 
 @contextmanager
@@ -257,32 +343,17 @@ def run_bowtie2(species_common_name: str, out_dir: Path, fwd_reads: Path, rvs_re
     mode = "paired" if paired else "unpaired"
     print(f"bowtie2 was selected as the aligner ({mode} short reads); searching for the host species within precomputed index database...")
 
-    precomputed_index = find_precomputed_index(BOWTIE2_DB, species_common_name)
+    indexes = find_precomputed_index(BOWTIE2_DB, species_common_name)
 
-    if precomputed_index is not None:
-
-        cmd = ["hostile", "clean", "--force", "--fastq1", str(fwd_reads)]
+    if indexes is not None:
         if paired:
-            cmd += ["--fastq2", str(rvs_reads)]
-        # --aligner bowtie2 is required for unpaired short reads; otherwise
-        # Hostile treats a single input file as long reads (Minimap2)
-        cmd += [
-            "--aligner", "bowtie2",
-            "--index", str(precomputed_index),
-            "--out-dir", str(out_dir),
-        ]
-        run(cmd)
-
-        if paired:
-            rename_hostile_outputs(
-                out_dir,
-                [fwd_reads, rvs_reads],
+            run_hostile_passes(
+                "bowtie2", indexes, [fwd_reads, rvs_reads], out_dir,
                 [f"cleaned_{base_name}_1.fastq.gz", f"cleaned_{base_name}_2.fastq.gz"],
             )
         else:
-            rename_hostile_outputs(
-                out_dir,
-                [fwd_reads],
+            run_hostile_passes(
+                "bowtie2", indexes, [fwd_reads], out_dir,
                 [f"cleaned_{base_name}.fastq.gz"],
             )
         return
@@ -295,20 +366,11 @@ def run_bowtie2(species_common_name: str, out_dir: Path, fwd_reads: Path, rvs_re
 def run_minimap2(species_common_name: str, out_dir: Path, single_reads: Path, base_name: str) -> None:
     print("minimap2 was selected as the aligner; searching for the GCF Accession within precomputed index database...")
 
-    precomputed_index = find_precomputed_index(MINIMAP2_DB, species_common_name, suffix=".mmi")
+    indexes = find_precomputed_index(MINIMAP2_DB, species_common_name, suffix=".mmi")
 
-    if precomputed_index is not None:
-
-        run([
-            "hostile", "clean", "--force",
-            "--fastq1", str(single_reads),
-            "--aligner", "minimap2",
-            "--index", str(precomputed_index),
-            "--out-dir", str(out_dir),
-        ])
-        rename_hostile_outputs(
-            out_dir,
-            [single_reads],
+    if indexes is not None:
+        run_hostile_passes(
+            "minimap2", indexes, [single_reads], out_dir,
             [f"cleaned_{base_name}.fastq.gz"],
         )
         return
